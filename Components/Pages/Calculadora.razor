@@ -1,0 +1,188 @@
+@page "/"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using SuperDigitoApp.Models
+@using SuperDigitoApp.Services
+@attribute [Authorize]
+@inject SuperDigitoDbContext DbContext
+@inject SuperDigitoService DigitoService
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Súper Dígito</PageTitle>
+
+<div class="row justify-content-center">
+    <!-- CALCULATOR CARD -->
+    <div class="col-lg-5 col-md-12 mb-4">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-header text-white border-0 py-3 rounded-top-4" style="background-color: #667eea;">
+                <h4 class="mb-0 fw-bold"><i class="bi bi-calculator"></i> Calcular Súper Dígito</h4>
+            </div>
+            <div class="card-body p-4">
+                <div class="mb-3">
+                    <label class="fw-bold text-secondary mb-1">Número</label>
+                    <input type="number" min="0" @bind="numeroInput" class="form-control form-control-lg bg-light border-0" placeholder="Ej. 67" />
+                </div>
+                
+                @if (!string.IsNullOrEmpty(errorMsg))
+                {
+                    <div class="alert alert-danger border-0 shadow-sm rounded-3 mb-3 py-2">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> @errorMsg
+                    </div>
+                }
+
+                <button class="btn btn-lg w-100 mb-4 fw-bold shadow-sm text-white" style="background-color: #667eea; border-color: #667eea;" @onclick="EjecutarCalculo">Calcular Súper Dígito</button>
+
+                @if (resultadoOutput > 0 || !string.IsNullOrEmpty(detalleOutput))
+                {
+                    <div class="mb-3">
+                        <label class="fw-bold text-secondary mb-1">Resultado</label>
+                        <input type="number" readonly value="@resultadoOutput" class="form-control form-control-lg fw-bold bg-light border-0" style="color: #667eea;" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(detalleOutput))
+                    {
+                        <div class="alert alert-info border-0 shadow-sm rounded-3 mt-3">
+                            <strong><i class="bi bi-info-circle-fill me-1"></i> Detalle del cálculo:</strong><br/>
+                            <span class="mt-1 d-block">@detalleOutput</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- HISTORY CARD -->
+    <div class="col-lg-7 col-md-12">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-header bg-dark text-white border-0 py-3 d-flex justify-content-between align-items-center rounded-top-4">
+                <h4 class="mb-0 fw-bold"><i class="bi bi-clock-history"></i> Historial</h4>
+                <button class="btn btn-danger btn-sm" @onclick="BorrarHistorialCompleto"><i class="bi bi-trash-fill"></i> Borrar Todo</button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-borderless mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="px-4 py-3">Número</th>
+                                <th class="py-3">Resultado</th>
+                                <th class="py-3">Fecha y Hora</th>
+                                <th class="text-end px-4 py-3">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!historialUsuario.Any())
+                            {
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">No hay cálculos recientes.</td>
+                                </tr>
+                            }
+                            @foreach (var h in historialUsuario)
+                            {
+                                <tr class="align-middle">
+                                    <td class="px-4 fw-bold">@h.Numero</td>
+                                    <td class="fw-bold" style="color: #667eea;">@h.Resultado</td>
+                                    <td class="text-muted small">@h.FechaHora.ToString("dd/MM/yy HH:mm")</td>
+                                    <td class="text-end px-4">
+                                        <button class="btn btn-sm btn-outline-danger rounded-pill" @onclick="() => EliminarRegistro(h.Id)">Eliminar</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int? numeroInput;
+    private int resultadoOutput;
+    private string detalleOutput;
+    private string errorMsg;
+    
+    private List<HistorialCalculo> historialUsuario = new();
+    private int usuarioLogueadoId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            usuarioLogueadoId = int.Parse(user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+            CargarHistorial();
+        }
+    }
+
+    private void CargarHistorial()
+    {
+        historialUsuario = DbContext.HistorialCalculos
+            .Where(h => h.UsuarioId == usuarioLogueadoId)
+            .OrderByDescending(h => h.FechaHora)
+            .ToList();
+    }
+
+    private void EjecutarCalculo()
+    {
+        errorMsg = null;
+        if (!numeroInput.HasValue) return;
+        
+        int numeroEvaluar = numeroInput.Value;
+        
+        if (numeroEvaluar < 0)
+        {
+            errorMsg = "No se permiten números negativos.";
+            resultadoOutput = 0;
+            detalleOutput = null;
+            return;
+        }
+
+        var calculoPrevio = DbContext.HistorialCalculos
+            .FirstOrDefault(h => h.UsuarioId == usuarioLogueadoId && h.Numero == numeroEvaluar);
+
+        if (calculoPrevio != null)
+        {
+            resultadoOutput = calculoPrevio.Resultado;
+            calculoPrevio.FechaHora = DateTime.Now;
+            DbContext.SaveChanges();
+        }
+        else
+        {
+            resultadoOutput = DigitoService.Calcular(numeroEvaluar);
+            
+            var nuevoRegistro = new HistorialCalculo
+            {
+                UsuarioId = usuarioLogueadoId,
+                Numero = numeroEvaluar,
+                Resultado = resultadoOutput,
+                FechaHora = DateTime.Now
+            };
+            DbContext.HistorialCalculos.Add(nuevoRegistro);
+            DbContext.SaveChanges();
+        }
+        
+        detalleOutput = DigitoService.CalcularDetalle(numeroEvaluar);
+        CargarHistorial();
+    }
+
+    private void EliminarRegistro(int historialId)
+    {
+        var registro = DbContext.HistorialCalculos.Find(historialId);
+        if (registro != null && registro.UsuarioId == usuarioLogueadoId)
+        {
+            DbContext.HistorialCalculos.Remove(registro);
+            DbContext.SaveChanges();
+            CargarHistorial();
+        }
+    }
+
+    private void BorrarHistorialCompleto()
+    {
+        var registros = DbContext.HistorialCalculos.Where(h => h.UsuarioId == usuarioLogueadoId);
+        DbContext.HistorialCalculos.RemoveRange(registros);
+        DbContext.SaveChanges();
+        CargarHistorial();
+    }
+}

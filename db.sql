@@ -1,0 +1,18 @@
+CREATE DATABASE SuperDigitoDB;
+GO
+USE SuperDigitoDB;
+GO
+
+CREATE TABLE Usuarios (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Usuario NVARCHAR(50) NOT NULL UNIQUE,
+    PasswordHash NVARCHAR(255) NOT NULL
+);
+
+CREATE TABLE HistorialCalculos (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    UsuarioId INT NOT NULL FOREIGN KEY REFERENCES Usuarios(Id),
+    Numero INT NOT NULL,
+    Resultado INT NOT NULL,
+    FechaHora DATETIME NOT NULL
+);
